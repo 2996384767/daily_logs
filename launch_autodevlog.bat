@@ -1,9 +1,11 @@
 @echo off
 setlocal
+chcp 65001 >nul
 
 set "PROJECT_DIR=%~dp0"
 if not defined PYTHON_EXE set "PYTHON_EXE=D:\anaconda3\envs\deeplearning\python.exe"
 if not defined AUTODEVLOG_EDITOR set "AUTODEVLOG_EDITOR=code --wait"
+if not defined AUTODEVLOG_MODE set "AUTODEVLOG_MODE=quick"
 
 if not exist "%PYTHON_EXE%" (
     echo [Auto-DevLog] Python environment not found:
@@ -13,9 +15,7 @@ if not exist "%PYTHON_EXE%" (
 )
 
 cd /d "%PROJECT_DIR%"
-
-echo [Auto-DevLog] Opening editor for a new dev log...
-"%PYTHON_EXE%" "%PROJECT_DIR%main.py" new
+"%PYTHON_EXE%" "%PROJECT_DIR%main.py" new --mode "%AUTODEVLOG_MODE%"
 set "EXIT_CODE=%ERRORLEVEL%"
 
 if not "%EXIT_CODE%"=="0" (
@@ -25,7 +25,5 @@ if not "%EXIT_CODE%"=="0" (
     exit /b %EXIT_CODE%
 )
 
-echo.
-echo [Auto-DevLog] Opening README.md so you can review the latest timeline...
 start "" "%PROJECT_DIR%README.md"
 exit /b 0

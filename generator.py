@@ -101,6 +101,27 @@ def build_timeline(entries: list[LogEntry], root_dir: Path) -> list[str]:
     return lines
 
 
+def build_latest_entry(entries: list[LogEntry], root_dir: Path) -> list[str]:
+    lines = ["## Latest Entry", ""]
+    if not entries:
+        lines.append("No logs yet.")
+        return lines
+
+    entry = entries[0]
+    relative_path = entry.path.relative_to(root_dir).as_posix()
+    tag_text = ", ".join(f"`{tag}`" for tag in entry.tags) if entry.tags else "`untagged`"
+    lines.extend(
+        [
+            f"### [{entry.title}]({relative_path})",
+            "",
+            f"- Time: {entry.created_at.strftime('%Y-%m-%d %H:%M')}",
+            f"- Tags: {tag_text}",
+            f"- Summary: {entry.summary}",
+        ]
+    )
+    return lines
+
+
 def build_tag_index(entries: list[LogEntry], root_dir: Path) -> list[str]:
     lines = ["## Tag Index", ""]
     tag_map: dict[str, list[LogEntry]] = {}
@@ -141,19 +162,20 @@ def generate_readme(root_dir: Path | None = None) -> Path:
         "",
         "Desktop one-click entry:",
         "",
-        "`C:\\Users\\29963\\Desktop\\Auto-DevLog.bat`",
+        "`C:\\Users\\29963\\Desktop\\Auto-DevLog.lnk`",
         "",
-        "Use the target Python environment directly:",
+        "Quick mode is the default. Advanced editor mode is still available:",
         "",
         "```powershell",
-        r"D:\anaconda3\envs\deeplearning\python.exe -m pip install -r requirements.txt",
-        '$env:AUTODEVLOG_EDITOR="code --wait"',
         r"D:\anaconda3\envs\deeplearning\python.exe main.py new",
+        r"D:\anaconda3\envs\deeplearning\python.exe main.py new --mode editor",
         "```",
         "",
         "## Line Endings",
         "",
         "This project standardizes on `LF` to keep Git diffs clean and avoid shell-script issues in WSL2 or Linux.",
+        "",
+        *build_latest_entry(entries, actual_root),
         "",
         *build_timeline(entries, actual_root),
         "",

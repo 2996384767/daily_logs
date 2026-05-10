@@ -6,29 +6,32 @@ A personal development log with clipboard image capture, structured markdown, an
 
 Desktop one-click entry:
 
-`C:\Users\29963\Desktop\Auto-DevLog.bat`
+`C:\Users\29963\Desktop\Auto-DevLog.lnk`
 
-Use the target Python environment directly:
+Quick mode is the default. Advanced editor mode is still available:
 
 ```powershell
-D:\anaconda3\envs\deeplearning\python.exe -m pip install -r requirements.txt
-$env:AUTODEVLOG_EDITOR="code --wait"
 D:\anaconda3\envs\deeplearning\python.exe main.py new
+D:\anaconda3\envs\deeplearning\python.exe main.py new --mode editor
 ```
 
 ## Line Endings
 
 This project standardizes on `LF` to keep Git diffs clean and avoid shell-script issues in WSL2 or Linux.
 
+## Latest Entry
+
+### [AAA agent批发](logs/2026/05/2026-05-10_0910.md)
+
+- Time: 2026-05-10 09:10
+- Tags: `code`
+- Summary: 尝试vibe coding
+
 ## Timeline
 
-- 2026-05-10 08:58 | [2026-05-10_0858](logs/2026/05/2026-05-10_0858.md) | `11111111111` | 11111111111
-- 2026-05-10 08:55 | [2026-05-10_0855](logs/2026/05/2026-05-10_0855.md) | `test` | 暂无
+- 2026-05-10 09:10 | [AAA agent批发](logs/2026/05/2026-05-10_0910.md) | `code` | 尝试vibe coding
 
 ## Tag Index
 
-### 11111111111
-- 2026-05-10 08:58 | [2026-05-10_0858](logs/2026/05/2026-05-10_0858.md)
-
-### test
-- 2026-05-10 08:55 | [2026-05-10_0855](logs/2026/05/2026-05-10_0855.md)
+### code
+- 2026-05-10 09:10 | [AAA agent批发](logs/2026/05/2026-05-10_0910.md)
