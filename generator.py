@@ -13,6 +13,7 @@ import yaml
 ROOT_DIR = Path(__file__).resolve().parent
 README_PATH = ROOT_DIR / "README.md"
 HTML_PATH = ROOT_DIR / "index.html"
+UPDATE_SUMMARY_PATH = ROOT_DIR / "更新概要.md"
 
 
 @dataclass(frozen=True)
@@ -171,6 +172,52 @@ def build_tag_index(entries: list[LogEntry], root_dir: Path) -> list[str]:
         lines.append("")
     if lines[-1] == "":
         lines.pop()
+    return lines
+
+
+def build_update_summary(entries: list[LogEntry], root_dir: Path) -> list[str]:
+    lines = [
+        "# 更新概要",
+        "",
+        f"最近生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        "",
+    ]
+
+    if not entries:
+        lines.extend(["当前还没有日志记录。", ""])
+        return lines
+
+    latest = entries[0]
+    lines.extend(
+        [
+            "## 最新状态",
+            "",
+            f"- 最近更新：[{latest.title}]({latest.path.relative_to(root_dir).as_posix()})",
+            f"- 创建时间：{latest.created_at.strftime('%Y-%m-%d %H:%M')}",
+            f"- 更新时间：{latest.updated_at.strftime('%Y-%m-%d %H:%M')}",
+            f"- 当日追加次数：{latest.entry_count}",
+            f"- 标签：{', '.join(f'`{tag}`' for tag in latest.tags) if latest.tags else '`untagged`'}",
+            f"- 摘要：{latest.summary}",
+            "",
+            "## 最近 7 条记录",
+            "",
+        ]
+    )
+
+    for entry in entries[:7]:
+        relative_path = entry.path.relative_to(root_dir).as_posix()
+        lines.append(
+            f"- {entry.updated_at.strftime('%Y-%m-%d %H:%M')} | "
+            f"[{entry.title}]({relative_path}) | {entry.entry_count} entries | {entry.summary}"
+        )
+
+    lines.extend(["", "## 最近活跃日期", ""])
+    for day_key, day_entries in group_entries_by_day(entries)[:5]:
+        total_updates = sum(entry.entry_count for entry in day_entries)
+        lines.append(
+            f"- {day_key} | {len(day_entries)} files | {total_updates} total updates"
+        )
+    lines.append("")
     return lines
 
 
@@ -372,7 +419,7 @@ def build_html(entries: list[LogEntry], root_dir: Path) -> str:
 """
 
 
-def generate_outputs(root_dir: Path | None = None) -> tuple[Path, Path]:
+def generate_outputs(root_dir: Path | None = None) -> tuple[Path, Path, Path]:
     actual_root = root_dir or ROOT_DIR
     entries = discover_entries(actual_root)
     content = [
@@ -410,7 +457,13 @@ def generate_outputs(root_dir: Path | None = None) -> tuple[Path, Path]:
 
     html_path = actual_root / "index.html"
     html_path.write_text(build_html(entries, actual_root), encoding="utf-8")
-    return readme_path, html_path
+
+    update_summary_path = actual_root / "更新概要.md"
+    update_summary_path.write_text(
+        "\n".join(build_update_summary(entries, actual_root)),
+        encoding="utf-8",
+    )
+    return readme_path, html_path, update_summary_path
 
 
 if __name__ == "__main__":

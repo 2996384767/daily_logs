@@ -24,6 +24,7 @@ TEMPLATE_PATH = ROOT_DIR / "template.md"
 TEMP_LOG_PATH = ROOT_DIR / "temp_log.md"
 README_PATH = ROOT_DIR / "README.md"
 HTML_PATH = ROOT_DIR / "index.html"
+UPDATE_SUMMARY_PATH = ROOT_DIR / "更新概要.md"
 CONFIG_PATH = ROOT_DIR / "autodevlog.json"
 SKIP_SYNC_ENV = "AUTODEVLOG_SKIP_SYNC"
 SKIP_TOKENS = {".", "/skip"}
@@ -145,6 +146,8 @@ def ensure_project_structure() -> AppConfig:
         TEMPLATE_PATH.write_text(DEFAULT_TEMPLATE, encoding="utf-8")
     if not README_PATH.exists():
         README_PATH.write_text("# Auto-DevLog\n", encoding="utf-8")
+    if not UPDATE_SUMMARY_PATH.exists():
+        UPDATE_SUMMARY_PATH.write_text("# 更新概要\n", encoding="utf-8")
     return load_config()
 
 
@@ -652,10 +655,10 @@ def init() -> None:
 
 @cli.command()
 def generate() -> None:
-    """Regenerate README.md and index.html from the log archive."""
+    """Regenerate README.md, index.html, and 更新概要.md from the log archive."""
     ensure_project_structure()
     generator.generate_outputs(ROOT_DIR)
-    click.echo("README.md and index.html regenerated.")
+    click.echo("README.md, index.html, and 更新概要.md regenerated.")
 
 
 @cli.command(name="view-path")
