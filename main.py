@@ -54,7 +54,7 @@ tags: []
 DEFAULT_CONFIG = {
     "editor": "code --wait",
     "default_mode": "quick",
-    "open_after_save": "readme",
+    "open_after_save": "html",
     "auto_sync": True,
 }
 
@@ -97,11 +97,23 @@ class SyncResult:
     message: str
 
 
+@dataclass(frozen=True)
+class SaveContext:
+    archived_path: Path
+    appended: bool
+    title: str
+    tags: list[str]
+    summary: str
+    updated_at: datetime
+
+
 class AutoDevLogError(RuntimeError):
     """Raised when the CLI cannot complete a requested operation."""
 
 
 def configure_console_encoding() -> None:
+    os.environ.setdefault("PYTHONUTF8", "1")
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     for stream_name in ("stdin", "stdout", "stderr"):
         stream = getattr(sys, stream_name, None)
         reconfigure = getattr(stream, "reconfigure", None)
@@ -127,9 +139,9 @@ def load_config() -> AppConfig:
     if default_mode not in {"quick", "editor"}:
         default_mode = "quick"
 
-    open_after_save = str(merged.get("open_after_save", "readme")).lower()
+    open_after_save = str(merged.get("open_after_save", "html")).lower()
     if open_after_save not in {"readme", "html"}:
-        open_after_save = "readme"
+        open_after_save = "html"
 
     return AppConfig(
         editor=str(merged.get("editor", DEFAULT_CONFIG["editor"])).strip() or DEFAULT_CONFIG["editor"],
@@ -147,8 +159,22 @@ def ensure_project_structure() -> AppConfig:
     if not README_PATH.exists():
         README_PATH.write_text("# Auto-DevLog\n", encoding="utf-8")
     if not UPDATE_SUMMARY_PATH.exists():
-        UPDATE_SUMMARY_PATH.write_text("# 更新概要\n", encoding="utf-8")
+        UPDATE_SUMMARY_PATH.write_text("# 更新概要\n\n", encoding="utf-8")
+    ensure_git_display_settings()
     return load_config()
+
+
+def ensure_git_display_settings() -> None:
+    result = subprocess.run(
+        ["git", "config", "--local", "core.quotepath", "false"],
+        cwd=ROOT_DIR,
+        capture_output=True,
+        text=True,
+        check=False,
+        encoding="utf-8",
+    )
+    if result.returncode != 0 and ".git" in str(ROOT_DIR):
+        return
 
 
 def current_log_paths(now: datetime) -> tuple[Path, Path]:
@@ -175,7 +201,7 @@ def detect_clipboard_image(now: datetime) -> ClipboardImageResult | None:
 
     try:
         image = ImageGrab.grabclipboard()
-    except Exception as exc:  # pragma: no cover
+    except Exception as exc:
         raise AutoDevLogError(f"Failed to access clipboard: {exc}") from exc
 
     if image is None or not hasattr(image, "save"):
@@ -272,6 +298,28 @@ def derive_title(answers: QuickLogAnswers) -> str:
     return "Quick Dev Log"
 
 
+def summarize_answers(answers: QuickLogAnswers) -> str:
+    for candidate in (
+        answers.core_work,
+        answers.learned,
+        answers.solved,
+        answers.unresolved,
+        answers.interesting,
+    ):
+        if candidate.strip():
+            return candidate.strip()
+    return "No summary provided."
+
+
+def extract_recent_summary(body: str) -> str:
+    lines = [line.strip() for line in body.replace("\r\n", "\n").splitlines()]
+    for line in reversed(lines):
+        if not line or line.startswith("#") or line == "---":
+            continue
+        return line.lstrip("-").strip()
+    return "编辑器模式更新了当天记录。"
+
+
 def build_bullet_lines(items: list[str], empty_text: str) -> list[str]:
     lines = [f"- {item}" for item in items if item.strip()]
     return lines or [f"- {empty_text}"]
@@ -319,7 +367,6 @@ def prompt_for_quick_answers(default_tags: list[str]) -> QuickLogAnswers:
         unresolved=unresolved,
         interesting=interesting,
     )
-
     if not any((core_work, learned, solved, unresolved, interesting)):
         raise AutoDevLogError("没有输入任何内容，本次记录已取消。")
     return answers
@@ -475,7 +522,7 @@ def update_existing_log(
     now: datetime,
     answers: QuickLogAnswers,
     clipboard_result: ClipboardImageResult | None,
-) -> Path:
+) -> SaveContext:
     parsed = parse_log_document(log_path.read_text(encoding="utf-8"))
     metadata = dict(parsed.metadata)
     metadata["updated_at"] = now.isoformat(timespec="seconds")
@@ -489,14 +536,21 @@ def update_existing_log(
 
     updated_body = parsed.body.rstrip() + build_append_section(now, answers, clipboard_result)
     log_path.write_text(dump_log_document(metadata, updated_body), encoding="utf-8")
-    return log_path
+    return SaveContext(
+        archived_path=log_path,
+        appended=True,
+        title=str(metadata.get("title") or derive_title(answers)),
+        tags=list(metadata.get("tags") or []),
+        summary=summarize_answers(answers),
+        updated_at=now,
+    )
 
 
 def write_existing_log_from_temp(
     log_path: Path,
     now: datetime,
     updated_content: str,
-) -> Path:
+) -> SaveContext:
     parsed = parse_log_document(updated_content)
     metadata = dict(parsed.metadata)
     metadata["updated_at"] = now.isoformat(timespec="seconds")
@@ -505,18 +559,39 @@ def write_existing_log_from_temp(
     metadata["tags"] = merge_tags(metadata.get("tags"), [])
     rewritten = dump_log_document(metadata, parsed.body)
     log_path.write_text(rewritten, encoding="utf-8")
-    return log_path
+    return SaveContext(
+        archived_path=log_path,
+        appended=True,
+        title=str(metadata.get("title") or log_path.stem),
+        tags=list(metadata.get("tags") or []),
+        summary=extract_recent_summary(parsed.body),
+        updated_at=now,
+    )
 
 
-def archive_temp_log(now: datetime, original_content: str) -> Path | None:
+def archive_temp_log(now: datetime, original_content: str) -> SaveContext | None:
     updated_content = TEMP_LOG_PATH.read_text(encoding="utf-8")
     if updated_content == original_content:
         TEMP_LOG_PATH.unlink(missing_ok=True)
         return None
-    return archive_content(now, updated_content)
+    archived_path = archive_content(now, updated_content)
+    parsed = parse_log_document(updated_content)
+    metadata = parsed.metadata
+    return SaveContext(
+        archived_path=archived_path,
+        appended=False,
+        title=str(metadata.get("title") or archived_path.stem),
+        tags=list(metadata.get("tags") or []),
+        summary=generator.extract_summary(parsed.body),
+        updated_at=now,
+    )
 
 
 def run_git_command(args: Sequence[str]) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["LESSCHARSET"] = "utf-8"
     return subprocess.run(
         args,
         cwd=ROOT_DIR,
@@ -524,6 +599,7 @@ def run_git_command(args: Sequence[str]) -> subprocess.CompletedProcess[str]:
         text=True,
         check=False,
         encoding="utf-8",
+        env=env,
     )
 
 
@@ -559,18 +635,41 @@ def sync_git(now: datetime, config: AppConfig) -> SyncResult:
     return SyncResult(attempted=True, success=True, message="GitHub 已同步成功。")
 
 
-def build_feedback(
-    archived_path: Path,
-    appended: bool,
-    sync_result: SyncResult,
-    view_path: Path,
-) -> str:
-    action = "追加完成" if appended else "记录完成"
+def append_update_summary(context: SaveContext) -> None:
+    if not UPDATE_SUMMARY_PATH.exists():
+        UPDATE_SUMMARY_PATH.write_text("# 更新概要\n\n", encoding="utf-8")
+
+    action = "追加更新" if context.appended else "新建记录"
+    tag_text = ", ".join(f"`{tag}`" for tag in context.tags) if context.tags else "`untagged`"
+    relative_path = context.archived_path.relative_to(ROOT_DIR).as_posix()
+    entry = "\n".join(
+        [
+            f"## {context.updated_at.strftime('%Y-%m-%d %H:%M:%S')} | {action}",
+            "",
+            f"- 标题：[{context.title}]({relative_path})",
+            f"- 标签：{tag_text}",
+            f"- 摘要：{context.summary}",
+            "",
+            "",
+        ]
+    )
+
+    existing = UPDATE_SUMMARY_PATH.read_text(encoding="utf-8")
+    if not existing.strip():
+        existing = "# 更新概要\n\n"
+    if not existing.endswith("\n"):
+        existing += "\n"
+    UPDATE_SUMMARY_PATH.write_text(existing + entry, encoding="utf-8")
+
+
+def build_feedback(context: SaveContext, sync_result: SyncResult, view_path: Path) -> str:
+    action = "追加完成" if context.appended else "记录完成"
     lines = [
         "",
         "==== Auto-DevLog ====",
         f"状态：{action}",
-        f"日志：{archived_path.relative_to(ROOT_DIR).as_posix()}",
+        f"日志：{context.archived_path.relative_to(ROOT_DIR).as_posix()}",
+        f"概要：{UPDATE_SUMMARY_PATH.name}",
         f"查看：{view_path.name}",
         f"同步：{sync_result.message}",
         "=====================",
@@ -582,10 +681,11 @@ def get_view_path(config: AppConfig) -> Path:
     return HTML_PATH if config.open_after_save == "html" else README_PATH
 
 
-def finalize_log(now: datetime, archived_path: Path, appended: bool, config: AppConfig) -> None:
+def finalize_log(now: datetime, context: SaveContext, config: AppConfig) -> None:
     generator.generate_outputs(ROOT_DIR)
+    append_update_summary(context)
     sync_result = sync_git(now, config)
-    click.echo(build_feedback(archived_path, appended, sync_result, get_view_path(config)))
+    click.echo(build_feedback(context, sync_result, get_view_path(config)))
 
 
 def run_quick_mode(now: datetime, clipboard_result: ClipboardImageResult | None, config: AppConfig) -> None:
@@ -597,13 +697,21 @@ def run_quick_mode(now: datetime, clipboard_result: ClipboardImageResult | None,
         raise AutoDevLogError("本次记录已取消。")
 
     if existing_log_path is not None:
-        archived_path = update_existing_log(existing_log_path, now, answers, clipboard_result)
-        finalize_log(now, archived_path, appended=True, config=config)
+        context = update_existing_log(existing_log_path, now, answers, clipboard_result)
+        finalize_log(now, context, config=config)
         return
 
     content = build_quick_log_content(now, answers, clipboard_result)
     archived_path = archive_content(now, content)
-    finalize_log(now, archived_path, appended=False, config=config)
+    context = SaveContext(
+        archived_path=archived_path,
+        appended=False,
+        title=derive_title(answers),
+        tags=answers.tags,
+        summary=summarize_answers(answers),
+        updated_at=now,
+    )
+    finalize_log(now, context, config=config)
 
 
 def run_editor_mode(now: datetime, clipboard_result: ClipboardImageResult | None, config: AppConfig) -> None:
@@ -621,8 +729,8 @@ def run_editor_mode(now: datetime, clipboard_result: ClipboardImageResult | None
             if updated_content == scaffold_content:
                 click.echo("No changes detected. Existing log left untouched.")
                 return
-            archived_path = write_existing_log_from_temp(existing_log_path, now, updated_content)
-            finalize_log(now, archived_path, appended=True, config=config)
+            context = write_existing_log_from_temp(existing_log_path, now, updated_content)
+            finalize_log(now, context, config=config)
         finally:
             TEMP_LOG_PATH.unlink(missing_ok=True)
         return
@@ -631,11 +739,11 @@ def run_editor_mode(now: datetime, clipboard_result: ClipboardImageResult | None
     TEMP_LOG_PATH.write_text(content, encoding="utf-8")
     try:
         open_editor(TEMP_LOG_PATH, config)
-        archived_path = archive_temp_log(now, content)
-        if archived_path is None:
+        context = archive_temp_log(now, content)
+        if context is None:
             click.echo("No changes detected. Temporary log discarded.")
             return
-        finalize_log(now, archived_path, appended=False, config=config)
+        finalize_log(now, context, config=config)
     finally:
         TEMP_LOG_PATH.unlink(missing_ok=True)
 
@@ -647,23 +755,22 @@ def cli() -> None:
 
 @cli.command()
 def init() -> None:
-    """Initialize the project structure."""
     ensure_project_structure()
     generator.generate_outputs(ROOT_DIR)
+    if not UPDATE_SUMMARY_PATH.exists():
+        UPDATE_SUMMARY_PATH.write_text("# 更新概要\n\n", encoding="utf-8")
     click.echo("Auto-DevLog initialized.")
 
 
 @cli.command()
 def generate() -> None:
-    """Regenerate README.md, index.html, and 更新概要.md from the log archive."""
     ensure_project_structure()
     generator.generate_outputs(ROOT_DIR)
-    click.echo("README.md, index.html, and 更新概要.md regenerated.")
+    click.echo("README.md and index.html regenerated.")
 
 
 @cli.command(name="view-path")
 def view_path_command() -> None:
-    """Print the configured result page path for launchers."""
     config = ensure_project_structure()
     click.echo(str(get_view_path(config)))
 
@@ -676,7 +783,6 @@ def view_path_command() -> None:
     help="Choose the fast prompt flow or the advanced editor flow.",
 )
 def new(mode: str | None) -> None:
-    """Create a new development log entry."""
     config = ensure_project_structure()
     now = datetime.now()
     selected_mode = (mode or config.default_mode).lower()

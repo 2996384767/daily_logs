@@ -13,7 +13,13 @@ import yaml
 ROOT_DIR = Path(__file__).resolve().parent
 README_PATH = ROOT_DIR / "README.md"
 HTML_PATH = ROOT_DIR / "index.html"
-UPDATE_SUMMARY_PATH = ROOT_DIR / "更新概要.md"
+
+
+@dataclass(frozen=True)
+class LogSection:
+    title: str
+    lines: list[str]
+    is_append: bool
 
 
 @dataclass(frozen=True)
@@ -27,6 +33,7 @@ class LogEntry:
     path: Path
     summary: str
     body: str
+    sections: list[LogSection]
 
 
 def split_frontmatter(content: str) -> tuple[dict[str, Any], str]:
@@ -69,6 +76,41 @@ def extract_summary(body: str) -> str:
     return "No summary provided."
 
 
+def parse_sections(body: str) -> list[LogSection]:
+    sections: list[LogSection] = []
+    current_title = "正文"
+    current_lines: list[str] = []
+
+    for raw_line in body.replace("\r\n", "\n").splitlines():
+        line = raw_line.strip()
+        if line.startswith("## "):
+            if current_lines:
+                sections.append(
+                    LogSection(
+                        title=current_title,
+                        lines=current_lines,
+                        is_append="追加记录" in current_title,
+                    )
+                )
+            current_title = line[3:].strip() or "正文"
+            current_lines = []
+            continue
+        if line == "---":
+            continue
+        if line:
+            current_lines.append(line)
+
+    if current_lines:
+        sections.append(
+            LogSection(
+                title=current_title,
+                lines=current_lines,
+                is_append="追加记录" in current_title,
+            )
+        )
+    return sections
+
+
 def load_log_entry(path: Path) -> LogEntry:
     content = path.read_text(encoding="utf-8")
     metadata, body = split_frontmatter(content)
@@ -82,6 +124,7 @@ def load_log_entry(path: Path) -> LogEntry:
         entry_count = int(metadata.get("entry_count", 1))
     except (TypeError, ValueError):
         entry_count = 1
+    sections = parse_sections(body)
     return LogEntry(
         title=title,
         created_at=created_at,
@@ -92,6 +135,7 @@ def load_log_entry(path: Path) -> LogEntry:
         path=path,
         summary=extract_summary(body),
         body=body,
+        sections=sections,
     )
 
 
@@ -175,85 +219,44 @@ def build_tag_index(entries: list[LogEntry], root_dir: Path) -> list[str]:
     return lines
 
 
-def build_update_summary(entries: list[LogEntry], root_dir: Path) -> list[str]:
-    lines = [
-        "# 更新概要",
-        "",
-        f"最近生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-        "",
-    ]
+def render_inline_html(text: str) -> str:
+    def replace_image(match: re.Match[str]) -> str:
+        alt = html.escape(match.group(1))
+        src = html.escape(match.group(2))
+        return f"<figure class='inline-image'><img src='{src}' alt='{alt}' loading='lazy'></figure>"
 
-    if not entries:
-        lines.extend(["当前还没有日志记录。", ""])
-        return lines
-
-    latest = entries[0]
-    lines.extend(
-        [
-            "## 最新状态",
-            "",
-            f"- 最近更新：[{latest.title}]({latest.path.relative_to(root_dir).as_posix()})",
-            f"- 创建时间：{latest.created_at.strftime('%Y-%m-%d %H:%M')}",
-            f"- 更新时间：{latest.updated_at.strftime('%Y-%m-%d %H:%M')}",
-            f"- 当日追加次数：{latest.entry_count}",
-            f"- 标签：{', '.join(f'`{tag}`' for tag in latest.tags) if latest.tags else '`untagged`'}",
-            f"- 摘要：{latest.summary}",
-            "",
-            "## 最近 7 条记录",
-            "",
-        ]
-    )
-
-    for entry in entries[:7]:
-        relative_path = entry.path.relative_to(root_dir).as_posix()
-        lines.append(
-            f"- {entry.updated_at.strftime('%Y-%m-%d %H:%M')} | "
-            f"[{entry.title}]({relative_path}) | {entry.entry_count} entries | {entry.summary}"
-        )
-
-    lines.extend(["", "## 最近活跃日期", ""])
-    for day_key, day_entries in group_entries_by_day(entries)[:5]:
-        total_updates = sum(entry.entry_count for entry in day_entries)
-        lines.append(
-            f"- {day_key} | {len(day_entries)} files | {total_updates} total updates"
-        )
-    lines.append("")
-    return lines
-
-
-def extract_sections(body: str) -> list[tuple[str, list[str]]]:
-    sections: list[tuple[str, list[str]]] = []
-    current_title = "正文"
-    current_lines: list[str] = []
-    for raw_line in body.splitlines():
-        line = raw_line.strip()
-        if line.startswith("#"):
-            if current_lines:
-                sections.append((current_title, current_lines))
-            current_title = line.lstrip("#").strip() or "正文"
-            current_lines = []
-            continue
-        if line:
-            current_lines.append(line)
-    if current_lines:
-        sections.append((current_title, current_lines))
-    return sections
-
-
-def render_line_html(line: str) -> str:
-    text = line[2:].strip() if line.startswith("- ") else line
     escaped = html.escape(text)
-    return re.sub(r"!\[[^\]]*\]\(([^)]+)\)", r"<a href='\1'>Image</a>", escaped)
+    escaped = re.sub(
+        r"!\[([^\]]*)\]\(([^)]+)\)",
+        lambda match: replace_image(match),
+        escaped,
+    )
+    return escaped
 
 
-def render_body_html(body: str) -> str:
+def render_section_items(lines: list[str]) -> str:
+    items: list[str] = []
+    for line in lines:
+        if line in {"---", "-"}:
+            continue
+        if line.startswith("### "):
+            items.append(f"<li class='mini-heading'>{html.escape(line[4:].strip())}</li>")
+            continue
+        text = line[2:].strip() if line.startswith("- ") else line
+        if not text:
+            continue
+        items.append(f"<li>{render_inline_html(text)}</li>")
+    return "".join(items)
+
+
+def render_entry_sections(entry: LogEntry) -> str:
     chunks: list[str] = []
-    for title, lines in extract_sections(body):
-        items = "".join(f"<li>{render_line_html(line)}</li>" for line in lines)
+    for section in entry.sections:
+        section_class = "entry-section append" if section.is_append else "entry-section"
         chunks.append(
-            "<section class='entry-section'>"
-            f"<h4>{html.escape(title)}</h4>"
-            f"<ul>{items}</ul>"
+            f"<section class='{section_class}'>"
+            f"<h4>{html.escape(section.title)}</h4>"
+            f"<ul>{render_section_items(section.lines)}</ul>"
             "</section>"
         )
     return "".join(chunks) or "<p>No details yet.</p>"
@@ -264,16 +267,18 @@ def build_html(entries: list[LogEntry], root_dir: Path) -> str:
     if entries:
         latest = entries[0]
         latest_href = latest.path.relative_to(root_dir).as_posix()
-        latest_tags = " ".join(f"<span class='tag'>{html.escape(tag)}</span>" for tag in latest.tags or ["untagged"])
+        latest_tags = " ".join(
+            f"<span class='tag'>{html.escape(tag)}</span>" for tag in latest.tags or ["untagged"]
+        )
         latest_html = (
-            f"<article class='card latest'>"
+            "<article class='card latest'>"
             f"<h2><a href='{html.escape(latest_href)}'>{html.escape(latest.title)}</a></h2>"
             f"<p class='meta'>Created {latest.created_at:%Y-%m-%d %H:%M} &middot; Updated {latest.updated_at:%Y-%m-%d %H:%M}</p>"
             f"<p class='meta'>Entries today: {latest.entry_count}</p>"
             f"<p>{html.escape(latest.summary)}</p>"
             f"<div class='tags'>{latest_tags}</div>"
-            f"<div class='detail-stack'>{render_body_html(latest.body)}</div>"
-            f"</article>"
+            f"<div class='detail-stack'>{render_entry_sections(latest)}</div>"
+            "</article>"
         )
 
     day_sections: list[str] = []
@@ -282,21 +287,23 @@ def build_html(entries: list[LogEntry], root_dir: Path) -> str:
         cards: list[str] = []
         for entry in day_entries:
             href = entry.path.relative_to(root_dir).as_posix()
-            tags = " ".join(f"<span class='tag'>{html.escape(tag)}</span>" for tag in entry.tags or ["untagged"])
+            tags = " ".join(
+                f"<span class='tag'>{html.escape(tag)}</span>" for tag in entry.tags or ["untagged"]
+            )
             cards.append(
-                f"<article class='card'>"
+                "<article class='card'>"
                 f"<h3><a href='{html.escape(href)}'>{html.escape(entry.title)}</a></h3>"
                 f"<p class='meta'>{entry.updated_at:%H:%M} &middot; {entry.entry_count} entries</p>"
                 f"<p>{html.escape(entry.summary)}</p>"
                 f"<div class='tags'>{tags}</div>"
-                f"<details class='detail-box'><summary>展开记录详情</summary>{render_body_html(entry.body)}</details>"
-                f"</article>"
+                f"<details class='detail-box'><summary>展开当天记录</summary>{render_entry_sections(entry)}</details>"
+                "</article>"
             )
         day_sections.append(
-            f"<section class='day-section'>"
+            "<section class='day-section'>"
             f"<div class='day-header'><h2>{html.escape(day_key)}</h2><p class='meta'>{len(day_entries)} files &middot; {day_total} total updates</p></div>"
             f"<div class='grid'>{''.join(cards)}</div>"
-            f"</section>"
+            "</section>"
         )
 
     tag_counts: dict[str, int] = {}
@@ -309,7 +316,7 @@ def build_html(entries: list[LogEntry], root_dir: Path) -> str:
     ) or "<p>No tags yet.</p>"
 
     return f"""<!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -322,6 +329,7 @@ def build_html(entries: list[LogEntry], root_dir: Path) -> str:
       --muted: #6f675e;
       --accent: #b55233;
       --line: #ded5c9;
+      --soft: #f3e1d8;
     }}
     * {{ box-sizing: border-box; }}
     body {{
@@ -332,7 +340,7 @@ def build_html(entries: list[LogEntry], root_dir: Path) -> str:
         radial-gradient(circle at top left, #f2e6d6 0, transparent 30%),
         linear-gradient(180deg, #faf7f1 0%, var(--bg) 100%);
     }}
-    main {{ max-width: 1120px; margin: 0 auto; padding: 40px 20px 80px; }}
+    main {{ max-width: 1140px; margin: 0 auto; padding: 40px 20px 80px; }}
     h1, h2, h3, h4 {{ margin: 0 0 12px; }}
     header {{ margin-bottom: 28px; }}
     p {{ line-height: 1.6; }}
@@ -355,14 +363,27 @@ def build_html(entries: list[LogEntry], root_dir: Path) -> str:
       padding-top: 12px;
       border-top: 1px solid var(--line);
     }}
+    .entry-section.append {{
+      background: rgba(243, 225, 216, 0.35);
+      border-radius: 12px;
+      padding: 12px 14px 4px;
+      border-top: none;
+    }}
     .entry-section ul {{
       margin: 0;
       padding-left: 18px;
       line-height: 1.7;
     }}
+    .mini-heading {{
+      list-style: none;
+      margin-left: -18px;
+      color: var(--accent);
+      font-weight: 600;
+      padding-top: 8px;
+    }}
     .grid {{
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
       gap: 16px;
     }}
     section {{ margin-top: 26px; }}
@@ -380,7 +401,7 @@ def build_html(entries: list[LogEntry], root_dir: Path) -> str:
       gap: 6px;
       padding: 6px 10px;
       border-radius: 999px;
-      background: #f3e1d8;
+      background: var(--soft);
       color: #7f341e;
       font-size: 0.9rem;
     }}
@@ -396,13 +417,23 @@ def build_html(entries: list[LogEntry], root_dir: Path) -> str:
       font-weight: 600;
       margin-bottom: 10px;
     }}
+    .inline-image {{
+      margin: 10px 0 0;
+    }}
+    .inline-image img {{
+      max-width: 100%;
+      display: block;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      box-shadow: 0 6px 16px rgba(48, 39, 27, 0.08);
+    }}
   </style>
 </head>
 <body>
   <main>
     <header>
       <h1>Auto-DevLog</h1>
-      <p class="meta">A day-grouped development journal with quick capture, appendable daily logs, and GitHub-friendly archives.</p>
+      <p class="meta">A day-grouped development journal with quick capture, appendable daily logs, image preview, and GitHub-friendly archives.</p>
     </header>
     <section>
       <h2>Latest Entry</h2>
@@ -419,51 +450,55 @@ def build_html(entries: list[LogEntry], root_dir: Path) -> str:
 """
 
 
-def generate_outputs(root_dir: Path | None = None) -> tuple[Path, Path, Path]:
+def write_if_changed(path: Path, content: str) -> bool:
+    if path.exists() and path.read_text(encoding="utf-8") == content:
+        return False
+    path.write_text(content, encoding="utf-8")
+    return True
+
+
+def generate_outputs(root_dir: Path | None = None) -> tuple[Path, Path]:
     actual_root = root_dir or ROOT_DIR
     entries = discover_entries(actual_root)
-    content = [
-        "# Auto-DevLog",
-        "",
-        "A personal development log with clipboard image capture, structured markdown, HTML browsing, and git sync.",
-        "",
-        "## Quick Start",
-        "",
-        "Desktop one-click entry:",
-        "",
-        "`C:\\Users\\29963\\Desktop\\Auto-DevLog.lnk`",
-        "",
-        "Quick mode is the default. Advanced editor mode is still available:",
-        "",
-        "```powershell",
-        r"D:\anaconda3\envs\deeplearning\python.exe main.py new",
-        r"D:\anaconda3\envs\deeplearning\python.exe main.py new --mode editor",
-        "```",
-        "",
-        "## Primary View",
-        "",
-        "- Main browsing page: `index.html`",
-        "- GitHub-friendly index: `README.md`",
-        "",
-        *build_latest_entry(entries, actual_root),
-        "",
-        *build_daily_timeline(entries, actual_root),
-        "",
-        *build_tag_index(entries, actual_root),
-        "",
-    ]
-    readme_path = actual_root / "README.md"
-    readme_path.write_text("\n".join(content), encoding="utf-8")
-
-    html_path = actual_root / "index.html"
-    html_path.write_text(build_html(entries, actual_root), encoding="utf-8")
-
-    update_summary_path = actual_root / "更新概要.md"
-    update_summary_path.write_text(
-        "\n".join(build_update_summary(entries, actual_root)),
-        encoding="utf-8",
+    readme_content = "\n".join(
+        [
+            "# Auto-DevLog",
+            "",
+            "A personal development log with clipboard image capture, structured markdown, HTML browsing, and git sync.",
+            "",
+            "## Quick Start",
+            "",
+            "Desktop one-click entry:",
+            "",
+            "`C:\\Users\\29963\\Desktop\\Auto-DevLog.lnk`",
+            "",
+            "Quick mode is the default. Advanced editor mode is still available:",
+            "",
+            "```powershell",
+            r"D:\anaconda3\envs\deeplearning\python.exe main.py new",
+            r"D:\anaconda3\envs\deeplearning\python.exe main.py new --mode editor",
+            "```",
+            "",
+            "## Primary View",
+            "",
+            "- Main browsing page: `index.html`",
+            "- GitHub-friendly index: `README.md`",
+            "",
+            *build_latest_entry(entries, actual_root),
+            "",
+            *build_daily_timeline(entries, actual_root),
+            "",
+            *build_tag_index(entries, actual_root),
+            "",
+        ]
     )
-    return readme_path, html_path, update_summary_path
+    html_content = build_html(entries, actual_root)
+
+    readme_path = actual_root / "README.md"
+    html_path = actual_root / "index.html"
+    write_if_changed(readme_path, readme_content)
+    write_if_changed(html_path, html_content)
+    return readme_path, html_path
 
 
 if __name__ == "__main__":

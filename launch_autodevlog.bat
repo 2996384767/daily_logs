@@ -1,6 +1,8 @@
 @echo off
 setlocal
 chcp 65001 >nul
+set "PYTHONUTF8=1"
+set "PYTHONIOENCODING=utf-8"
 
 set "PROJECT_DIR=%~dp0"
 if not defined PYTHON_EXE set "PYTHON_EXE=D:\anaconda3\envs\deeplearning\python.exe"
