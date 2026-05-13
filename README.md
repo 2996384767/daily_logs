@@ -1,6 +1,6 @@
 # Auto-DevLog
 
-A personal development log with clipboard image capture, structured markdown, and git sync.
+A personal development log with clipboard image capture, structured markdown, HTML browsing, and git sync.
 
 ## Quick Start
 
@@ -15,23 +15,27 @@ D:\anaconda3\envs\deeplearning\python.exe main.py new
 D:\anaconda3\envs\deeplearning\python.exe main.py new --mode editor
 ```
 
-## Line Endings
+## Primary View
 
-This project standardizes on `LF` to keep Git diffs clean and avoid shell-script issues in WSL2 or Linux.
+- Main browsing page: `index.html`
+- GitHub-friendly index: `README.md`
 
 ## Latest Entry
 
 ### [AAA agent批发](logs/2026/05/2026-05-10_0910.md)
 
-- Time: 2026-05-10 09:10
+- Created: 2026-05-10 09:10
+- Updated: 2026-05-10 09:10
+- Entries Today: 1
 - Tags: `code`
 - Summary: 尝试vibe coding
 
-## Timeline
+## Daily Timeline
 
-- 2026-05-10 09:10 | [AAA agent批发](logs/2026/05/2026-05-10_0910.md) | `code` | 尝试vibe coding
+### 2026-05-10 (1 files, 1 updates)
+- 09:10 | [AAA agent批发](logs/2026/05/2026-05-10_0910.md) | 1 entries | `code` | 尝试vibe coding
 
 ## Tag Index
 
-### code
+### code (1)
 - 2026-05-10 09:10 | [AAA agent批发](logs/2026/05/2026-05-10_0910.md)

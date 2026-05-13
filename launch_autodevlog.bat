@@ -25,5 +25,7 @@ if not "%EXIT_CODE%"=="0" (
     exit /b %EXIT_CODE%
 )
 
-start "" "%PROJECT_DIR%README.md"
+for /f "usebackq delims=" %%I in (`"%PYTHON_EXE%" "%PROJECT_DIR%main.py" view-path`) do set "VIEW_PATH=%%I"
+if not defined VIEW_PATH set "VIEW_PATH=%PROJECT_DIR%README.md"
+start "" "%VIEW_PATH%"
 exit /b 0

@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Auto-DevLog</title>
+  <style>
+    :root {
+      --bg: #f6f3ec;
+      --paper: #fffdf8;
+      --ink: #1f1c18;
+      --muted: #6f675e;
+      --accent: #b55233;
+      --line: #ded5c9;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, #f2e6d6 0, transparent 30%),
+        linear-gradient(180deg, #faf7f1 0%, var(--bg) 100%);
+    }
+    main { max-width: 1120px; margin: 0 auto; padding: 40px 20px 80px; }
+    h1, h2, h3, h4 { margin: 0 0 12px; }
+    header { margin-bottom: 28px; }
+    p { line-height: 1.6; }
+    a { color: var(--accent); text-decoration: none; }
+    .meta { color: var(--muted); font-size: 0.95rem; }
+    .card {
+      background: var(--paper);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: 0 8px 24px rgba(48, 39, 27, 0.06);
+    }
+    .latest { margin-bottom: 28px; }
+    .detail-stack {
+      margin-top: 18px;
+      display: grid;
+      gap: 14px;
+    }
+    .entry-section {
+      padding-top: 12px;
+      border-top: 1px solid var(--line);
+    }
+    .entry-section ul {
+      margin: 0;
+      padding-left: 18px;
+      line-height: 1.7;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+    }
+    section { margin-top: 26px; }
+    .day-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+    .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #f3e1d8;
+      color: #7f341e;
+      font-size: 0.9rem;
+    }
+    .tag-wall { margin-right: 8px; margin-bottom: 8px; }
+    .detail-box {
+      margin-top: 14px;
+      border-top: 1px solid var(--line);
+      padding-top: 12px;
+    }
+    .detail-box summary {
+      cursor: pointer;
+      color: var(--accent);
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Auto-DevLog</h1>
+      <p class="meta">A day-grouped development journal with quick capture, appendable daily logs, and GitHub-friendly archives.</p>
+    </header>
+    <section>
+      <h2>Latest Entry</h2>
+      <article class='card latest'><h2><a href='logs/2026/05/2026-05-10_0910.md'>AAA agent批发</a></h2><p class='meta'>Created 2026-05-10 09:10 &middot; Updated 2026-05-10 09:10</p><p class='meta'>Entries today: 1</p><p>尝试vibe coding</p><div class='tags'><span class='tag'>code</span></div><div class='detail-stack'><section class='entry-section'><h4>核心产出</h4><ul><li>尝试vibe coding</li><li>ai coding（codex）初体验</li></ul></section><section class='entry-section'><h4>踩坑记录</h4><ul><li>codex 、claude、openclaw安装问题</li><li>claude退款，openclaw没有合适的模型，codex没钱订阅</li></ul></section><section class='entry-section'><h4>灵感与碎片</h4><ul><li>这个神秘的记录项目</li><li>剪贴板图片已接管：<a href='../../../assets/2026/05/img_20260510_091005.png'>Image</a></li></ul></section></div></article>
+    </section>
+    <section>
+      <h2>Tag Wall</h2>
+      <div class="tags"><span class='tag tag-wall'>code <strong>1</strong></span></div>
+    </section>
+    <section class='day-section'><div class='day-header'><h2>2026-05-10</h2><p class='meta'>1 files &middot; 1 total updates</p></div><div class='grid'><article class='card'><h3><a href='logs/2026/05/2026-05-10_0910.md'>AAA agent批发</a></h3><p class='meta'>09:10 &middot; 1 entries</p><p>尝试vibe coding</p><div class='tags'><span class='tag'>code</span></div><details class='detail-box'><summary>展开记录详情</summary><section class='entry-section'><h4>核心产出</h4><ul><li>尝试vibe coding</li><li>ai coding（codex）初体验</li></ul></section><section class='entry-section'><h4>踩坑记录</h4><ul><li>codex 、claude、openclaw安装问题</li><li>claude退款，openclaw没有合适的模型，codex没钱订阅</li></ul></section><section class='entry-section'><h4>灵感与碎片</h4><ul><li>这个神秘的记录项目</li><li>剪贴板图片已接管：<a href='../../../assets/2026/05/img_20260510_091005.png'>Image</a></li></ul></section></details></article></div></section>
+  </main>
+</body>
+</html>

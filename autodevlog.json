@@ -1,0 +1,6 @@
+{
+  "editor": "code --wait",
+  "default_mode": "quick",
+  "open_after_save": "html",
+  "auto_sync": true
+}
